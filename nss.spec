@@ -7,7 +7,7 @@
 Summary:          Network Security Services
 Name:             nss
 Version:          3.12.7
-Release:          2%{?dist}
+Release:          2%{?dist}_1
 License:          MPLv1.1 or GPLv2+ or LGPLv2+
 URL:              http://www.mozilla.org/projects/security/pki/nss/
 Group:            System Environment/Libraries
@@ -486,6 +486,9 @@ rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/nsslowhash.h
 
 
 %changelog
+* Tue Sep 13 2011 Ivan Makfinsky <ivan.makfinsky@endosys.com> - 3.12.7-2.gl6_1
+- Replaced expired PayPalEE.cert file
+
 * Thu Aug 27 2010 Kai Engert <kengert@redhat.com> - 3.12.7-2
 - Increase release version number, no code changes
 
