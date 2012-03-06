@@ -1,0 +1,150 @@
+diff -up ./mozilla/security/nss/lib/ckfw/pem/pinst.c.735047 ./mozilla/security/nss/lib/ckfw/pem/pinst.c
+--- ./mozilla/security/nss/lib/ckfw/pem/pinst.c.735047	2011-10-16 14:51:36.678593400 -0700
++++ ./mozilla/security/nss/lib/ckfw/pem/pinst.c	2011-10-16 15:26:16.759712879 -0700
+@@ -213,7 +213,6 @@ CreateObject(CK_OBJECT_CLASS objClass,
+     case CKO_PRIVATE_KEY:
+         plog("Creating key id %d in slot %ld\n", objid, slotID);
+         memset(&o->u.key, 0, sizeof(o->u.key));
+-        nickname = filename;
+         break;
+     case CKO_NETSCAPE_TRUST:
+         plog("Creating trust nick %s id %d in slot %ld\n", nickname, objid, slotID);
+@@ -319,7 +318,7 @@ AddObjectIfNeeded(CK_OBJECT_CLASS objCla
+ 
+     /* FIXME: copy-pasted from CreateObject */
+     const char *nickname = strrchr(filename, '/');
+-    if (nickname && CKO_PRIVATE_KEY != objClass)
++    if (nickname)
+         nickname++;
+     else
+         nickname = filename;
+@@ -377,7 +376,6 @@ AddCertificate(char *certfile, char *key
+                CK_SLOT_ID slotID)
+ {
+     pemInternalObject *o;
+-    SECItem certDER;
+     CK_RV error = 0;
+     int objid, i;
+     int nobjs = 0;
+@@ -385,7 +383,6 @@ AddCertificate(char *certfile, char *key
+     char *ivstring = NULL;
+     int cipher;
+ 
+-    certDER.data = NULL;
+     nobjs = ReadDERFromFile(&objs, certfile, PR_TRUE, &cipher, &ivstring, PR_TRUE /* certs only */);
+     if (nobjs <= 0) {
+         nss_ZFreeIf(objs);
+@@ -469,32 +466,36 @@ pem_Initialize
+ )
+ {
+     CK_RV rv;
+-    /* parse the initialization string and initialize CRLInstances */
++    /* parse the initialization string */
+     char **certstrings = NULL;
++    char *modparms = NULL;
+     PRInt32 numcerts = 0;
+     PRBool status, error = PR_FALSE;
+     int i;
++    CK_C_INITIALIZE_ARGS_PTR modArgs = NULL;
++
++    if (!fwInstance) return CKR_ARGUMENTS_BAD;
++
++    modArgs = NSSCKFWInstance_GetInitArgs(fwInstance);
++    if (modArgs &&
++       ((modArgs->flags & CKF_OS_LOCKING_OK) || (modArgs->CreateMutex != 0))) {
++        return CKR_CANT_LOCK;
++    }
+ 
+     if (pemInitialized) {
+         return CKR_OK;
+     }
++
+     RNG_RNGInit();
+ 
+     open_log();
+ 
+     plog("pem_Initialize\n");
+ 
+-    unsigned char *modparms = NULL;
+-    if (!fwInstance) {
+-        return CKR_ARGUMENTS_BAD;
+-    }
+-
+-    CK_C_INITIALIZE_ARGS_PTR modArgs =
+-        NSSCKFWInstance_GetInitArgs(fwInstance);
+     if (!modArgs || !modArgs->LibraryParameters) {
+         goto done;
+     }
+-    modparms = (unsigned char *) modArgs->LibraryParameters;
++    modparms = (char *) modArgs->LibraryParameters;
+     plog("Initialized with %s\n", modparms);
+ 
+     /*
+@@ -510,7 +511,7 @@ pem_Initialize
+      *
+      */
+     status =
+-        pem_ParseString((const char *) modparms, ' ', &numcerts,
++        pem_ParseString(modparms, ' ', &numcerts,
+                         &certstrings);
+     if (status == PR_FALSE) {
+         return CKR_ARGUMENTS_BAD;
+diff -up ./mozilla/security/nss/lib/ckfw/pem/pobject.c.735047 ./mozilla/security/nss/lib/ckfw/pem/pobject.c
+--- ./mozilla/security/nss/lib/ckfw/pem/pobject.c.735047	2011-10-16 14:51:36.679593121 -0700
++++ ./mozilla/security/nss/lib/ckfw/pem/pobject.c	2011-10-16 15:26:46.231843596 -0700
+@@ -1113,12 +1113,28 @@ pem_CreateObject
+     }
+ 
+     if (objClass == CKO_CERTIFICATE) {
++        int i;
++
+         nobjs = ReadDERFromFile(&derlist, filename, PR_TRUE, &cipher, &ivstring, PR_TRUE /* certs only */);
+         if (nobjs < 1)
+-            return (NSSCKMDObject *) NULL;
++            goto loser;
+ 
+-        /* We're just adding a cert, we'll assume the key is next */
+-        objid = pem_nobjs + 1;
++        objid = -1;
++        /* Brute force: find the id of the key, if any, in this slot */
++        for (i = 0; i < pem_nobjs; i++) {
++            if (NULL == gobj[i])
++                continue;
++
++            if ((slotID == gobj[i]->slotID)
++                && (gobj[i]->type == pemBareKey)) {
++                objid = atoi(gobj[i]->id.data);
++            }
++        }
++
++        if (objid == -1) {
++            /* We're just adding a cert, we'll assume the key is next */
++            objid = pem_nobjs + 1;
++        }
+ 
+         if (cacert) {
+             /* Add the certificate. There may be more than one */
+@@ -1160,9 +1176,10 @@ pem_CreateObject
+ 
+         nobjs = ReadDERFromFile(&derlist, filename, PR_TRUE, &cipher, &ivstring, PR_FALSE /* keys only */);
+         if (nobjs < 1)
+-            return (NSSCKMDObject *) NULL;
++            goto loser;
+ 
+         certDER.len = 0; /* in case there is no equivalent cert */
++        certDER.data = NULL;
+ 
+         objid = -1;
+         for (i = 0; i < pem_nobjs; i++) {
+diff -up ./mozilla/security/nss/lib/libpkix/pkix_pl_nss/pki/pkix_pl_infoaccess.c.735047 ./mozilla/security/nss/lib/libpkix/pkix_pl_nss/pki/pkix_pl_infoaccess.c
+--- ./mozilla/security/nss/lib/libpkix/pkix_pl_nss/pki/pkix_pl_infoaccess.c.735047	2011-04-07 23:03:07.000000000 -0700
++++ ./mozilla/security/nss/lib/libpkix/pkix_pl_nss/pki/pkix_pl_infoaccess.c	2011-10-16 14:51:36.726625877 -0700
+@@ -632,7 +632,7 @@ pkix_pl_InfoAccess_ParseTokens(
+ 
+                     separator = terminator;
+ 
+-                    if (endPos == '\0') {
++                    if (*endPos == '\0') {
+                         *startPos = endPos;
+                         break;
+                     } else {

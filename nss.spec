@@ -1,13 +1,12 @@
-%global nspr_version 4.8.6
-%global nss_util_version 3.12.7
-%global nss_softokn_version 3.12.7
-%global nss_softokn_fips_version 3.12.4
+%global nspr_version 4.8.8
+%global nss_util_version 3.12.10
+%global nss_softokn_version 3.12.9
 %global unsupported_tools_directory %{_libdir}/nss/unsupported-tools
 
 Summary:          Network Security Services
 Name:             nss
-Version:          3.12.7
-Release:          2%{?dist}.goose.1
+Version:          3.12.10
+Release:          16%{?dist}
 License:          MPLv1.1 or GPLv2+ or LGPLv2+
 URL:              http://www.mozilla.org/projects/security/pki/nss/
 Group:            System Environment/Libraries
@@ -17,7 +16,7 @@ Requires:         nss-softokn%{_isa} >= %{nss_softokn_version}
 Requires:         nss-system-init
 BuildRoot:        %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires:    nspr-devel >= %{nspr_version}
-BuildRequires:    nss-softokn-devel >= %{nss_softokn_version}                                                  
+BuildRequires:    nss-softokn-devel >= %{nss_softokn_version}
 BuildRequires:    nss-util-devel >= %{nss_util_version}
 BuildRequires:    sqlite-devel
 BuildRequires:    zlib-devel
@@ -25,6 +24,7 @@ BuildRequires:    pkgconfig
 BuildRequires:    gawk
 BuildRequires:    psmisc
 BuildRequires:    perl
+Conflicts:        curl < 7.19.7-26.el6
 
 Source0:          %{name}-%{version}-stripped.tar.bz2
 
@@ -38,12 +38,31 @@ Source7:          blank-key4.db
 Source8:          system-pkcs11.txt
 Source9:          setup-nsssysinit.sh
 Source10:         PayPalEE.cert
-Source12:         %{name}-pem-20100412.tar.bz2
+Source12:         %{name}-pem-20101125.tar.bz2
 
-Patch2:           nss-nolocalsql.patch
+Patch2:           add-relro-linker-option.patch
 Patch3:           renegotiate-transitional.patch
 Patch6:           nss-enable-pem.patch
-Patch7:           nsspem-bz596783.patch
+Patch7:           nsspem-643564.patch
+Patch8:           nsspem-logging.patch
+Patch16:          nss-589636.patch
+Patch18:          nss-dbtests-noroot.patch
+Patch19:          nss-bz689031.patch
+Patch20:          nss-703658.patch
+Patch21:          builtins-nssckbi_1_87_rtm.patch
+# coverity - rhbz#735047 includes patch for rhbz#717913
+# reported bad eof check upstream as mozilla bugzilla #684389
+# partial fix for bad eof check fixed upstream picked up here
+# patches for rhbz#717338, #hbz734760, and rhbz#736410 from
+# fedora are absorved here as they fix coverity issues as well.
+# TODO remove or adjust this patch when we update to nss 3.13
+Patch22:          nss-735047.patch
+# Remove when we update to nss 3.13.2 or higher
+Patch23:          nss-671266.patch
+# TODO: Remove when we update to 3.13.2 or higher
+Patch24:          nss-747387.patch
+# To be removed when we update to 3.13.2 or higher
+Patch25:          builtins-nssckbi_1_88_rtm.patch
 
 %description
 Network Security Services (NSS) is a set of libraries designed to
@@ -71,6 +90,8 @@ manipulate the NSS certificate and key database.
 %package sysinit
 Summary:          System NSS Initilization
 Group:            System Environment/Base
+# providing nss-system-init without version so that it can
+# be replaced by a better one, e.g. supplied by the os vendor
 Provides:         nss-system-init
 Requires:         nss = %{version}-%{release}
 Requires(post):   coreutils, sed
@@ -86,7 +107,7 @@ Summary:          Development libraries for Network Security Services
 Group:            Development/Libraries
 Requires:         nss = %{version}-%{release}
 Requires:         nss-util-devel
-Requires:         nss-softokn-devel 
+Requires:         nss-softokn-devel
 Requires:         nspr-devel >= %{nspr_version}
 Requires:         pkgconfig
 
@@ -97,7 +118,9 @@ Header and Library files for doing development with Network Security Services.
 %package pkcs11-devel
 Summary:          Development libraries for PKCS #11 (Cryptoki) using NSS
 Group:            Development/Libraries
+Provides:         nss-pkcs11-devel-static = %{version}-%{release}
 Requires:         nss-devel = %{version}-%{release}
+Requires:         nss-softokn-freebl-devel = %{nss_softokn_version}
 
 %description pkcs11-devel
 Library files for developing PKCS #11 modules using basic NSS 
@@ -109,10 +132,21 @@ low level services.
 %{__cp} %{SOURCE10} -f ./mozilla/security/nss/tests/libpkix/certs
 %setup -q -T -D -n %{name}-%{version} -a 12
 
-%patch2 -p0 -b .nolocalsql
+%patch2 -p0 -b .relro
 %patch3 -p0 -b .transitional
 %patch6 -p0 -b .libpem
-%patch7 -p1 -b .596783
+%patch7 -p0 -b .643564
+%patch8 -p1 -b .695018
+%patch16 -p0 -b .589636
+%patch18 -p0 -b .noroot
+%patch19 -p1 -b .bz689031
+%patch20 -p0 -b .703658
+%patch21 -p0 -b .diginotar
+# remove when we update to nss 3.13
+%patch22 -p0 -b .735047
+%patch23 -p0 -b .671266
+%patch24 -p0 -b .747387
+%patch25 -p0 -b .ckbi188rtm
 
 
 %build
@@ -123,6 +157,10 @@ export FREEBL_NO_DEPEND
 # Enable compiler optimizations and disable debugging code
 BUILD_OPT=1
 export BUILD_OPT
+
+# Uncomment to disable optimizations
+#RPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed -e 's/-O2/-O0/g'`
+#export RPM_OPT_FLAGS
 
 # Generate symbolic info for debuggers
 XCFLAGS=$RPM_OPT_FLAGS
@@ -143,13 +181,28 @@ export NSPR_LIB_DIR
 NSS_INCLUDE_DIR=`/usr/bin/pkg-config --cflags-only-I nss-util | sed 's/-I//'`
 NSS_LIB_DIR=`/usr/bin/pkg-config --libs-only-L nss-util | sed 's/-L//'`
 
-#export NSS_INCLUDE_DIR
-#export NSS_LIB_DIR
+NSS_USE_SYSTEM_SQLITE=1
+export NSS_USE_SYSTEM_SQLITE
 
 %ifarch x86_64 ppc64 ia64 s390x sparc64
 USE_64=1
 export USE_64
 %endif
+
+##### phase 1: build freebl/softokn shared libraries
+# ecc not supported by freebl
+unset NSS_ENABLE_ECC
+# Compile softoken plus needed support
+%{__make} -C ./mozilla/security/coreconf
+%{__make} -C ./mozilla/security/dbm
+%{__make} -C ./mozilla/security/nss
+
+##### phase 2: build the rest of nss
+# nss supports pluggable ecc
+NSS_ENABLE_ECC=1
+export NSS_ENABLE_ECC
+NSS_ECC_MORE_THAN_SUITE_B=1
+export NSS_ECC_MORE_THAN_SUITE_B
 
 # We only ship the nss proper libraries, no softoken nor util, yet                                   
 # we must compile with the entire source tree because nss needs                               
@@ -196,6 +249,21 @@ chmod 755 ./mozilla/dist/pkgconfig/nss-config
 %{__cat} %{SOURCE9} > ./mozilla/dist/pkgconfig/setup-nsssysinit.sh
 chmod 755 ./mozilla/dist/pkgconfig/setup-nsssysinit.sh
 
+%check
+
+# Begin -- copied from the build section
+FREEBL_NO_DEPEND=1
+export FREEBL_NO_DEPEND
+
+BUILD_OPT=1
+export BUILD_OPT
+
+%ifarch x86_64 ppc64 ia64 s390x sparc64
+USE_64=1
+export USE_64
+%endif
+# End -- copied from the build section
+
 # enable the following line to force a test failure
 # find ./mozilla -name \*.chk | xargs rm -f
 
@@ -211,7 +279,7 @@ chmod 755 ./mozilla/dist/pkgconfig/setup-nsssysinit.sh
 # avoid weird quoting we'll require that no spaces are being used.
 
 SPACEISBAD=`find ./mozilla/security/nss/tests | grep -c ' '` ||:
-if [ SPACEISBAD -ne 0 ]; then
+if [ $SPACEISBAD -ne 0 ]; then
   echo "error: filenames containing space are not supported (xargs)"
   exit 1
 fi
@@ -243,8 +311,8 @@ cd ./mozilla/security/nss/tests/
 
 # Uncomment these lines if you need to temporarily
 # disable the ssl test suites for faster test builds
-#%%global nss_ssl_tests "normal_fips"
-#%%%global nss_ssl_run "cov auth"
+# global nss_ssl_tests "normal_fips"
+# global nss_ssl_run "cov auth"
 
 HOST=localhost DOMSUF=localdomain PORT=$MYRAND NSS_CYCLES=%{?nss_cycles} NSS_TESTS=%{?nss_tests} NSS_SSL_TESTS=%{?nss_ssl_tests} NSS_SSL_RUN=%{?nss_ssl_run} ./all.sh
 
@@ -351,7 +419,8 @@ rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/secoidt.h
 rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/secport.h
 rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/utilrename.h
 
-#remove header shipped in nss-softokn-devel
+#remove header shipped by nss-softokn-devel and nss-softokn-freebl-devel
+rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/alghmac.h
 rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/blapit.h
 rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/ecl-exp.h
 rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/hasht.h
@@ -363,15 +432,15 @@ rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/nsslowhash.h
 %clean
 %{__rm} -rf $RPM_BUILD_ROOT
 
+%triggerpostun -n nss-sysinit -- nss-sysinit < 3.12.8-2
+# Reverse unwanted disabling of sysinit by faulty preun sysinit scriplet
+# from previous versions of nss.spec
+/usr/bin/setup-nsssysinit.sh on
+
 %post -p /sbin/ldconfig
 
 %postun -p /sbin/ldconfig
 
-%post sysinit
-%{_bindir}/setup-nsssysinit.sh on
-
-%preun sysinit
-%{_bindir}/setup-nsssysinit.sh off
 
 %files
 %defattr(-,root,root)
@@ -381,16 +450,16 @@ rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/nsslowhash.h
 %{_libdir}/libnssckbi.so
 %{_libdir}/libnsspem.so
 %dir %{_sysconfdir}/pki/nssdb
-%config(noreplace) %{_sysconfdir}/pki/nssdb/cert8.db
-%config(noreplace) %{_sysconfdir}/pki/nssdb/key3.db
-%config(noreplace) %{_sysconfdir}/pki/nssdb/secmod.db
+%config(noreplace) %verify(not md5 size mtime) %{_sysconfdir}/pki/nssdb/cert8.db
+%config(noreplace) %verify(not md5 size mtime) %{_sysconfdir}/pki/nssdb/key3.db
+%config(noreplace) %verify(not md5 size mtime) %{_sysconfdir}/pki/nssdb/secmod.db
 
 %files sysinit
 %defattr(-,root,root)
 %{_libdir}/libnsssysinit.so
-%config(noreplace) %{_sysconfdir}/pki/nssdb/cert9.db
-%config(noreplace) %{_sysconfdir}/pki/nssdb/key4.db
-%config(noreplace) %{_sysconfdir}/pki/nssdb/pkcs11.txt
+%config(noreplace) %verify(not md5 size mtime) %{_sysconfdir}/pki/nssdb/cert9.db
+%config(noreplace) %verify(not md5 size mtime) %{_sysconfdir}/pki/nssdb/key4.db
+%config(noreplace) %verify(not md5 size mtime) %{_sysconfdir}/pki/nssdb/pkcs11.txt
 %{_bindir}/setup-nsssysinit.sh
 
 %files tools
@@ -486,8 +555,101 @@ rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/nsslowhash.h
 
 
 %changelog
-* Tue Sep 13 2011 Ivan Makfinsky <ivan.makfinsky@endosys.com> - 3.12.7-2.goose.1
-- Replaced expired PayPalEE.cert file
+* Tue Nov 08 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-16
+- Update builtins certs to those from NSSCKBI_1_88_RTM
+
+* Thu Oct 27 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-15
+- Bug 747387 - Unable to contact LDAP Server during winsync
+
+* Wed Oct 19 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-14
+- Add to the spec file the patch for Bug 671266
+
+* Sun Oct 16 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-13
+- More coverity related fixes in the pem module
+
+* Sun Oct 16 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-12
+- Coverity related fixes
+
+* Tue Sep 27 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-11
+- Add relro support for executables and shared libraries
+
+* Mon Sep 19 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-10
+- Add partial RELRO support 
+
+* Fri Sep 02 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-9
+- Fix the name of the last patch file
+
+* Fri Sep 02 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-8
+- Retagging to pick up two missing commits
+
+* Fri Sep 02 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-7
+- Update builtins certs to those from NSSCKBI_1_87_RTM
+
+* Wed Aug 31 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-6
+- Update builtins certs to those from NSSCKBI_1_86_RTM
+
+* Tue Aug 30 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-5
+- Update builtins certs to those from NSSCKBI_1_85_RTM
+
+* Sun Aug 14 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-4
+- Fix CMS to verify signed data when SignerInfo indicates signer by subjectKeyID
+
+* Fri Aug 12 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-3
+- Fix pem logging to deal with files originally created by root
+
+* Mon Jul 11 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-2
+- Retagging for updated patch missing from previous tag
+
+* Mon Jul 11 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.10-1
+- Update to 3.12.10
+
+* Thu Jun 23 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-11
+- Resolves: rhbz# 703658 - Fix crmf hard-coded maximum size for wrapped private keys
+
+* Thu Jun 23 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-10
+- Resolves: rhbz#688423 - Enable NSS support for pluggable ECC
+
+* Thu Apr 21 2011 Elio Maldonado Batiz <emaldona@redhat.com> - 3.12.9-9
+- Add "Conflicts: curl < 7.19.7-26.el6" to fix Bug 694663 
+
+* Thu Apr 07 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-8
+- Construct private key nickname based on the full pathname of the pem file
+
+* Wed Apr 06 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-7
+- Update expired PayPayEE.cert test certificate
+- Conditionalize some database tests on user not being root
+
+* Wed Mar 23 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-6
+- Update to NSS_3.12.9_WITH_CKBI_1_82_RTM
+
+* Tue Mar 01 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-5
+- Fix memory leaks caused by SECKEY_ImportDERPublicKey
+
+* Wed Feb 24 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-4
+- Short-term fix for ssl test suites hangs on ipv6 type connections
+
+* Thu Feb 17 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-3
+- Add requires for pkcs11-devel on nss-softokn-freebl devel
+- Run the test suites in check section per packaging guidelines
+
+* Sat Jan 22 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-2
+- Prefer user database ca cert trust settings system's ones
+- Swap internal key slot on fips mode switches
+
+* Mon Jan 17 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.9-1
+- Update to 3.12.9
+- Fix libnsspem to test for and reject directories
+
+* Fri Nov 27 2010 Elio Maldonado <emaldona@redhat.com> - 3.12.8-2
+- Add suppport for pkcs8 formatted keys in the pem module
+- Add verify(not md5 size mtime) to configuration files attributes
+- Prevent nss-sysinit disabling on package upgrade
+- Create pkcs11.txt with correct permissions regardless of current umask
+- Add option to setup-nsssysinit.sh to report nss-sysinit status
+- Update test certificate which had expired
+
+* Fri Oct 01 2010 Elio Maldonado <emaldona@redhat.com> - 3.12.8-1
+- Update to 3.12.8
 
 * Thu Aug 27 2010 Kai Engert <kengert@redhat.com> - 3.12.7-2
 - Increase release version number, no code changes

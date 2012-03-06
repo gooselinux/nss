@@ -1,0 +1,22 @@
+diff -up ./mozilla/security/nss/lib/certdb/certdb.c.671266 ./mozilla/security/nss/lib/certdb/certdb.c
+--- ./mozilla/security/nss/lib/certdb/certdb.c.671266	2011-10-19 09:04:28.561789147 -0700
++++ ./mozilla/security/nss/lib/certdb/certdb.c	2011-10-19 09:06:35.035276231 -0700
+@@ -2563,7 +2563,17 @@ CERT_ImportCerts(CERTCertDBHandle *certd
+ 	                                            NULL,
+ 	                                            PR_FALSE,
+ 	                                            PR_TRUE);
+-	    if (certs[fcerts]) fcerts++;
++	    if (certs[fcerts]) {
++		SECItem subjKeyID = {siBuffer, NULL, 0};
++		if (CERT_FindSubjectKeyIDExtension(certs[fcerts],
++		                                   &subjKeyID) == SECSuccess) {
++		    if (subjKeyID.data) {
++			cert_AddSubjectKeyIDMapping(&subjKeyID, certs[fcerts]);
++		    }
++		    SECITEM_FreeItem(&subjKeyID, PR_FALSE);
++		}
++		fcerts++;
++	    }
+ 	}
+ 
+ 	if ( keepCerts ) {

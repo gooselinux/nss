@@ -1,12 +1,7 @@
-nss-pem-20100412.tar.bz2
-PayPalEE.cert
-setup-nsssysinit.sh
-system-pkcs11.txt
+nss-pem-20101125.tar.bz2
 blank-key4.db
 blank-cert9.db
 blank-secmod.db
 blank-key3.db
 blank-cert8.db
-nss-config.in
-nss.pc.in
-nss-3.12.7-stripped.tar.bz2
+nss-3.12.10-stripped.tar.bz2

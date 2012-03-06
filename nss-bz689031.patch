@@ -1,0 +1,69 @@
+From 50671df8a665e333a9c9d8d4c3ad56dcdd9eb8cc Mon Sep 17 00:00:00 2001
+From: Kamil Dudka <kdudka@redhat.com>
+Date: Thu, 7 Apr 2011 14:52:21 +0200
+Subject: [PATCH] nss - bz #689031 [V2]
+
+---
+ mozilla/security/nss/lib/ckfw/pem/pinst.c   |    3 ++-
+ mozilla/security/nss/lib/ckfw/pem/pobject.c |   20 ++------------------
+ 2 files changed, 4 insertions(+), 19 deletions(-)
+
+diff --git a/mozilla/security/nss/lib/ckfw/pem/pinst.c b/mozilla/security/nss/lib/ckfw/pem/pinst.c
+index 70f5f4e..7e286c8 100644
+--- a/mozilla/security/nss/lib/ckfw/pem/pinst.c
++++ b/mozilla/security/nss/lib/ckfw/pem/pinst.c
+@@ -213,6 +213,7 @@ CreateObject(CK_OBJECT_CLASS objClass,
+     case CKO_PRIVATE_KEY:
+         plog("Creating key id %d in slot %ld\n", objid, slotID);
+         memset(&o->u.key, 0, sizeof(o->u.key));
++        nickname = filename;
+         break;
+     case CKO_NETSCAPE_TRUST:
+         plog("Creating trust nick %s id %d in slot %ld\n", nickname, objid, slotID);
+@@ -318,7 +319,7 @@ AddObjectIfNeeded(CK_OBJECT_CLASS objClass,
+ 
+     /* FIXME: copy-pasted from CreateObject */
+     const char *nickname = strrchr(filename, '/');
+-    if (nickname)
++    if (nickname && CKO_PRIVATE_KEY != objClass)
+         nickname++;
+     else
+         nickname = filename;
+diff --git a/mozilla/security/nss/lib/ckfw/pem/pobject.c b/mozilla/security/nss/lib/ckfw/pem/pobject.c
+index 8f3e0dc..2665de1 100644
+--- a/mozilla/security/nss/lib/ckfw/pem/pobject.c
++++ b/mozilla/security/nss/lib/ckfw/pem/pobject.c
+@@ -1113,28 +1113,12 @@ pem_CreateObject
+     }
+ 
+     if (objClass == CKO_CERTIFICATE) {
+-        int i;
+-
+         nobjs = ReadDERFromFile(&derlist, filename, PR_TRUE, &cipher, &ivstring, PR_TRUE /* certs only */);
+         if (nobjs < 1)
+             return (NSSCKMDObject *) NULL;
+ 
+-        objid = -1;
+-        /* Brute force: find the id of the key, if any, in this slot */
+-        for (i = 0; i < pem_nobjs; i++) {
+-            if (NULL == gobj[i])
+-                continue;
+-
+-            if ((slotID == gobj[i]->slotID)
+-                && (gobj[i]->type == pemBareKey)) {
+-                objid = atoi(gobj[i]->id.data);
+-            }
+-        }
+-
+-        if (objid == -1) {
+-            /* We're just adding a cert, we'll assume the key is next */
+-            objid = pem_nobjs + 1;
+-        }
++        /* We're just adding a cert, we'll assume the key is next */
++        objid = pem_nobjs + 1;
+ 
+         if (cacert) {
+             /* Add the certificate. There may be more than one */
+-- 
+1.7.4
+
