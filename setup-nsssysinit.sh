@@ -1,24 +1,24 @@
 #!/bin/sh
 #
 # Turns on or off the nss-sysinit module db by editing the
-# global PKCS #11 congiguration file. Displays the status.
+# global PKCS #11 congiguration file.
 #
 # This script can be invoked by the user as super user.
-# It is invoked at nss-sysinit post install time with argument on.
+# It is invoked at nss-sysinit post install time with argument on
+# and at nss-sysinit pre uninstall with argument off. 
 #
 usage()
 {
   cat <<EOF
 Usage: setup-nsssysinit [on|off]
-  on     - turns on nsssysinit
-  off    - turns off nsssysinit
-  status - reports whether nsssysinit is turned on or off
+  on  - turns on nsssysinit
+  off - turns off nsssysinit
 EOF
   exit $1
 }
 
 # validate
-if [ $# -eq 0 ]; then
+if test $# -eq 0; then
   usage 1 1>&2
 fi
 
@@ -30,26 +30,17 @@ if [ ! -f $p11conf ]; then
   exit 1
 fi
 
-# check if nsssysinit is currently enabled or disabled
-sysinit_enabled()
-{
-  grep -q '^library=libnsssysinit' ${p11conf}
-}
-
-umask 022
+on="1"
 case "$1" in
   on | ON )
-    if sysinit_enabled; then 
-      exit 0 
-    fi
     cat ${p11conf} | \
-    sed -e 's/^library=$/library=libnsssysinit.so/' \
-        -e '/^NSS/s/\(Flags=internal\)\(,[^m]\)/\1,moduleDBOnly\2/' > \
-        ${p11conf}.on
+     sed -e 's/^library=$/library=libnsssysinit.so/' \
+         -e '/^NSS/s/\(Flags=internal\)\(,[^m]\)/\1,moduleDBOnly\2/' > \
+    ${p11conf}.on
     mv ${p11conf}.on ${p11conf}
     ;;
   off | OFF )
-    if ! sysinit_enabled; then
+    if [ ! `grep "^library=libnsssysinit" ${p11conf}` ]; then
       exit 0
     fi
     cat ${p11conf} | \
@@ -57,10 +48,6 @@ case "$1" in
         -e '/^NSS/s/Flags=internal,moduleDBOnly/Flags=internal/' > \
         ${p11conf}.off
     mv ${p11conf}.off ${p11conf}
-    ;;
-  status )
-    echo -n 'NSS sysinit is '
-    sysinit_enabled && echo 'enabled' || echo 'disabled'
     ;;
   * )
     usage 1 1>&2
