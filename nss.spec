@@ -7,7 +7,7 @@
 Summary:          Network Security Services
 Name:             nss
 Version:          3.12.8
-Release:          3%{?dist}
+Release:          1%{?dist}
 License:          MPLv1.1 or GPLv2+ or LGPLv2+
 URL:              http://www.mozilla.org/projects/security/pki/nss/
 Group:            System Environment/Libraries
@@ -41,10 +41,8 @@ Source10:         PayPalEE.cert
 Source12:         %{name}-pem-20100412.tar.bz2
 
 Patch3:           renegotiate-transitional.patch
-Patch4:           nss-ckbi-1.82.patch
 Patch6:           nss-enable-pem.patch
 Patch7:           nsspem-bz596783.patch
-Patch8:           nss-617723.patch
 
 %description
 Network Security Services (NSS) is a set of libraries designed to
@@ -111,10 +109,8 @@ low level services.
 %setup -q -T -D -n %{name}-%{version} -a 12
 
 %patch3 -p0 -b .transitional
-%patch4 -p0 -b .nssckbi
 %patch6 -p0 -b .libpem
 %patch7 -p1 -b .596783
-%patch8 -p0 -b .617723
 
 
 %build
@@ -488,12 +484,6 @@ rm -rf $RPM_BUILD_ROOT/%{_includedir}/nss3/nsslowhash.h
 
 
 %changelog
-* Thu Mar 24 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.8-3
-- Update builtin certs to NSS_3.12.9_WITH_CKBI_1_82_RTM via a patch
-
-* Wed Mar 23 2011 Elio Maldonado <emaldona@redhat.com> - 3.12.8-2
-- Update to builtin certs from NSS_3.12.9_WITH_CKBI_1_82_RTM
-
 * Fri Oct 01 2010 Elio Maldonado <emaldona@redhat.com> - 3.12.8-1
 - Update to 3.12.8
 
