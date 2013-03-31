@@ -1,0 +1,33 @@
+Index: mozilla/security/nss/cmd/selfserv/selfserv.c
+===================================================================
+RCS file: /cvsroot/mozilla/security/nss/cmd/selfserv/selfserv.c,v
+retrieving revision 1.94
+diff -p -u -8 -r1.94 selfserv.c
+--- mozilla/security/nss/cmd/selfserv/selfserv.c	3 Apr 2010 18:27:27 -0000	1.94
++++ mozilla/security/nss/cmd/selfserv/selfserv.c	24 Feb 2011 02:28:02 -0000
+@@ -1487,21 +1487,21 @@ PRFileDesc *
+ getBoundListenSocket(unsigned short port)
+ {
+     PRFileDesc *       listen_sock;
+     int                listenQueueDepth = 5 + (2 * maxThreads);
+     PRStatus	       prStatus;
+     PRNetAddr          addr;
+     PRSocketOptionData opt;
+ 
+-    addr.inet.family = PR_AF_INET;
+-    addr.inet.ip     = PR_INADDR_ANY;
+-    addr.inet.port   = PR_htons(port);
++    if (PR_SetNetAddr(PR_IpAddrAny, PR_AF_INET6, port, &addr) != PR_SUCCESS) {
++	errExit("PR_SetNetAddr");
++    }
+ 
+-    listen_sock = PR_NewTCPSocket();
++    listen_sock = PR_OpenTCPSocket(PR_AF_INET6);
+     if (listen_sock == NULL) {
+ 	errExit("PR_NewTCPSocket");
+     }
+ 
+     opt.option = PR_SockOpt_Nonblocking;
+     opt.value.non_blocking = PR_FALSE;
+     prStatus = PR_SetSocketOption(listen_sock, &opt);
+     if (prStatus < 0) {

@@ -44,6 +44,7 @@ Patch3:           renegotiate-transitional.patch
 Patch4:           nss-ckbi-1.82.patch
 Patch6:           nss-enable-pem.patch
 Patch7:           nsspem-bz596783.patch
+Patch8:           nss-617723.patch
 
 %description
 Network Security Services (NSS) is a set of libraries designed to
@@ -113,6 +114,7 @@ low level services.
 %patch4 -p0 -b .nssckbi
 %patch6 -p0 -b .libpem
 %patch7 -p1 -b .596783
+%patch8 -p0 -b .617723
 
 
 %build
